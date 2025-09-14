@@ -1,0 +1,43 @@
+
+version: "3.9"
+services:
+  db:
+    image: postgres:16
+    container_name: aistock-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      TZ: ${TZ}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./initdb/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    networks: [aistock]
+
+  api:
+    build: ./backend
+    container_name: aistock-api
+    restart: unless-stopped
+    env_file: .env
+    depends_on: [db]
+    ports:
+      - "8080:8080"
+    networks: [aistock]
+
+  web:
+    build: ./frontend
+    container_name: aistock-web
+    restart: unless-stopped
+    depends_on: [api]
+    environment:
+      - VITE_API_BASE=http://api:8080
+    ports:
+      - "8081:80"
+    networks: [aistock]
+
+volumes:
+  db_data:
+
+networks:
+  aistock:
