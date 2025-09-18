@@ -75,7 +75,7 @@ const Dashboard: React.FC = () => {
       }
       setError(null);
 
-      const API_BASE = (window as any).API_BASE || 'http://localhost:8080';
+      const API_BASE = (window as any).API_BASE || 'http://localhost:8083';
       const response = await fetch(`${API_BASE}/api/dashboard/reports`);
 
       if (!response.ok) {
@@ -146,7 +146,7 @@ const Dashboard: React.FC = () => {
 
   const retryReport = async (stockCode: string) => {
     try {
-      const API_BASE = (window as any).API_BASE || 'http://localhost:8080';
+      const API_BASE = (window as any).API_BASE || 'http://localhost:8083';
       const response = await fetch(`${API_BASE}/api/tasks/report/${stockCode}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

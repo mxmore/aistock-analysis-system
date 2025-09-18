@@ -1,4 +1,17 @@
-# 🚀 AI Stock Analysis System
+# 🚀 AI Stock Ana### 📊 Technical Analysis
+- **Real-time Indicators**: RSI, MACD, Moving Averages, Bollinger Bands
+- **Signal Generation**: Buy/sell signals with scoring algorithms
+- **Historical Backtesting**: Performance tracking and validation
+
+### 📰 News Knowledge Base (NEW)
+- **Intelligent Collection**: Auto-generates search strategies based on your watchlist stocks
+- **Multi-source Aggregation**: Integrated SearXNG with support for Baidu, Google, Bing
+- **Smart Strategies**: Individual stock, industry, policy, and market-wide news collection
+- **Sentiment Analysis**: Real-time news sentiment scoring (positive/negative/neutral)
+- **Stock Association**: Automatic detection of stock symbols and relevance scoring
+- **Automated Scheduling**: Intelligent collection every 4 hours with frequency control
+
+### 🤖 Automated SystemSystem
 
 [![GitHub Stars](https://img.shields.io/github/stars/mxmore/aistock-analysis-system)](https://github.com/mxmore/aistock-analysis-system)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -66,11 +79,37 @@ docker compose up -d --build
 ```
 
 Access the application:
-- **Frontend**: http://localhost:8081
-- **Backend API**: http://localhost:8080
-- **API Docs**: http://localhost:8080/docs
+- **Frontend**: http://localhost:3000
+- **Backend API**: http://localhost:8000
+- **API Docs**: http://localhost:8000/docs
+- **SearXNG Search**: http://localhost:8080
 
-### 4. Local Development
+### 4. Quick Start with Intelligent News
+
+After deployment, try the intelligent news collection:
+
+```bash
+# Run the demonstration script
+chmod +x demo.sh
+./demo.sh
+
+# Or manually:
+# 1. Add some stocks to your watchlist
+curl -X POST "http://localhost:8000/api/watchlist" \
+  -H "Content-Type: application/json" \
+  -d '{"symbol": "000001", "name": "平安银行", "sector": "金融"}'
+
+# 2. Check generated strategies
+curl "http://localhost:8000/api/news/strategies"
+
+# 3. Run intelligent collection
+curl -X POST "http://localhost:8000/api/news/collect/intelligent"
+
+# 4. View collected news
+curl "http://localhost:8000/api/news/articles"
+```
+
+### 5. Local Development
 
 #### Backend Setup
 ```bash
@@ -105,8 +144,18 @@ aistock-analysis-system/
 │   │   ├── signals.py         # Technical indicators
 │   │   ├── scheduler.py       # Task scheduling
 │   │   ├── report.py          # Report generation
+│   │   ├── news_service.py    # News search and collection
+│   │   ├── news_strategy.py   # News processing and analysis
 │   │   └── task_manager.py    # Async task management
+│   ├── scripts/               # Development and management scripts
+│   │   ├── dev_server.py      # Unified development server
+│   │   ├── manage.py          # Project management commands
+│   │   └── README.md          # Scripts documentation
 │   ├── tests/                 # Comprehensive test suite
+│   │   ├── unit/              # Unit tests
+│   │   ├── integration/       # Integration tests
+│   │   ├── data/              # Data tests
+│   │   └── run_tests.py       # Test runner
 │   └── requirements.txt       # Python dependencies
 ├── frontend/                  # React frontend
 │   ├── src/
@@ -559,6 +608,69 @@ confidence_interval = predicted_price ± 5%  # 固定5%置信区间
 }
 ```
 
+## 📰 新闻知识库功能（NEW）
+
+### 系统架构
+```
+SearXNG + Redis + MongoDB + PostgreSQL
+    ↓
+  新闻搜索 → 内容解析 → 情感分析 → 股票关联
+    ↓
+  自动收集 → 数据存储 → API接口 → 前端展示
+```
+
+### 部署新闻功能
+
+#### 1. 启动SearXNG服务
+```bash
+cd searxng
+docker-compose up -d
+```
+
+#### 2. 配置环境变量
+```bash
+# 在 .env 文件中添加
+SEARXNG_URL=http://localhost:10000
+MONGO_USER=admin
+MONGO_PASSWORD=password123
+NEWS_COLLECTION_ENABLED=true
+```
+
+#### 3. 新闻API接口
+
+**搜索新闻**
+```http
+POST /api/news/search
+{
+  "query": "比亚迪 新能源",
+  "category": "news",
+  "time_range": "week"
+}
+```
+
+**获取股票新闻**
+```http
+GET /api/news/stock/002594.SZ?limit=20
+```
+
+**情感分析**
+```http
+GET /api/news/sentiment/002594.SZ?days=7
+```
+
+#### 4. 访问新闻界面
+- 在系统中点击"财经新闻"选项卡
+- 支持搜索、过滤和情感分析
+- 自动关联当前选中的股票
+
+### 新闻功能特性
+- 🔍 **多源搜索**: 百度、谷歌、必应新闻聚合
+- 🤖 **智能解析**: 自动提取标题、内容、发布时间
+- 💭 **情感分析**: 正面/负面/中性情感评分
+- 📊 **股票关联**: 自动识别新闻中的股票代码
+- ⏰ **定时收集**: 每4小时自动收集最新新闻
+- 🔄 **去重处理**: 基于URL和内容的智能去重
+
 ## 风险提示与免责声明
 
 ### ⚠️ 重要提醒
@@ -579,3 +691,383 @@ confidence_interval = predicted_price ± 5%  # 固定5%置信区间
 - 建立合理的风险管理机制
 
 ---
+
+# 📦 快速部署与使用指南
+
+（以下内容来自 QUICK_START.md）
+
+# 🚀 快速部署指南
+
+## AI股票分析系统 + SearXNG新闻知识库
+
+### 一、环境准备
+
+- **服务器**：推荐使用 Ubuntu 20.04+ 或 CentOS 7+
+- **Docker**：安装 Docker 和 Docker Compose
+- **域名**：准备好域名并解析到服务器 IP
+
+### 二、克隆项目
+
+```bash
+git clone https://github.com/mxmore/aistock-analysis-system.git
+cd aistock-analysis-system
+```
+
+### 三、配置环境变量
+
+复制示例环境文件并修改配置：
+
+```bash
+cp .env.example .env
+# 编辑 .env 文件，配置数据库、API 等信息
+```
+
+### 四、启动服务
+
+#### 1. 一键启动（推荐）
+
+```bash
+docker compose up -d --build
+```
+
+#### 2. 手动启动
+
+- **后端**：
+
+```bash
+cd backend
+docker build -t aistock-backend .
+docker run -d -p 8000:8000 --name aistock-backend aistock-backend
+```
+
+- **前端**：
+
+```bash
+cd frontend
+docker build -t aistock-frontend .
+docker run -d -p 3000:80 --name aistock-frontend aistock-frontend
+```
+
+- **数据库**：
+
+```bash
+docker compose up -d db
+```
+
+### 五、访问应用
+
+- **前端**：`http://your_domain_or_ip:3000`
+- **后端 API**：`http://your_domain_or_ip:8000`
+- **API 文档**：`http://your_domain_or_ip:8000/docs`
+- **SearXNG 搜索**：`http://your_domain_or_ip:8080`
+
+### 六、数据初始化
+
+- **手动初始化**：执行 `initdb/init.sql` 文件，创建数据库表结构。
+- **自动初始化**：重启服务时自动执行初始化脚本。
+
+---
+
+# SearXNG 新闻知识库集成部署指南
+
+（以下内容来自 NEWS_DEPLOYMENT_GUIDE.md）
+
+## 一、环境准备
+
+- **服务器**：推荐使用 Ubuntu 20.04+ 或 CentOS 7+
+- **Docker**：安装 Docker 和 Docker Compose
+- **域名**：准备好域名并解析到服务器 IP
+
+## 二、克隆项目
+
+```bash
+git clone https://github.com/mxmore/aistock-analysis-system.git
+cd aistock-analysis-system
+```
+
+## 三、配置环境变量
+
+复制示例环境文件并修改配置：
+
+```bash
+cp .env.example .env
+# 编辑 .env 文件，配置数据库、API 等信息
+```
+
+## 四、启动服务
+
+#### 1. 一键启动（推荐）
+
+```bash
+docker compose up -d --build
+```
+
+#### 2. 手动启动
+
+- **后端**：
+
+```bash
+cd backend
+docker build -t aistock-backend .
+docker run -d -p 8000:8000 --name aistock-backend aistock-backend
+```
+
+- **前端**：
+
+```bash
+cd frontend
+docker build -t aistock-frontend .
+docker run -d -p 3000:80 --name aistock-frontend aistock-frontend
+```
+
+- **数据库**：
+
+```bash
+docker compose up -d db
+```
+
+- **SearXNG**：
+
+```bash
+cd searxng
+docker-compose up -d
+```
+
+## 五、访问应用
+
+- **前端**：`http://your_domain_or_ip:3000`
+- **后端 API**：`http://your_domain_or_ip:8000`
+- **API 文档**：`http://your_domain_or_ip:8000/docs`
+- **SearXNG 搜索**：`http://your_domain_or_ip:8080`
+
+## 六、数据初始化
+
+- **手动初始化**：执行 `initdb/init.sql` 文件，创建数据库表结构。
+- **自动初始化**：重启服务时自动执行初始化脚本。
+
+---
+
+# 股票预测算法规则说明
+
+（以下内容来自 ALGORITHM.md）
+
+## 预测策略概述
+系统采用多层次预测策略，结合技术指标分析和机器学习模型，为用户提供短期价格预测和买卖信号。
+
+## 技术指标计算规则
+
+### 1. 移动平均线 (MA)
+- **短期均线**: 10日移动平均线 `ma_short = close.rolling(10).mean()`
+- **长期均线**: 30日移动平均线 `ma_long = close.rolling(30).mean()`
+- **用途**: 判断价格趋势方向，短均线上穿长均线为看涨信号
+
+### 2. 相对强弱指数 (RSI)
+- **计算周期**: 14日
+- **公式**: `RSI = 100 - (100 / (1 + RS))`，其中 RS = 上涨平均值 / 下跌平均值
+- **信号判断**:
+  - RSI > 70：超买区域，可能下跌
+  - RSI < 30：超卖区域，可能上涨
+  - RSI 接近50：中性区域
+
+### 3. MACD 指标
+- **快线**: 12日EMA - 26日EMA
+- **慢线**: 9日EMA of MACD
+- **信号**: MACD上穿信号线为买入信号
+
+## 综合信号评分系统
+
+### 评分规则 (signal_score)
+```
+基础分数 = 0
+```
+
+#### 1. 均线交叉评分 (±20分)
+- **金叉**: 短均线上穿长均线 → +20分
+- **死叉**: 短均线下穿长均线 → -20分
+
+#### 2. RSI 评分 (±15分)
+- **计算公式**: `min(max(50 - |RSI - 50|, -15), 15)`
+- **说明**: RSI越接近50越好，偏离50越远扣分越多
+
+#### 3. MACD 评分 (+10分)
+- **条件**: MACD上穿信号线 → +10分
+- **其他情况**: 0分
+
+### 最终操作建议
+```python
+if signal_score >= 15:
+    action = "BUY"     # 买入
+elif signal_score <= -15:
+    action = "TRIM"    # 减仓
+else:
+    action = "HOLD"    # 持有
+```
+
+## 价格预测模型
+
+### 模型选择策略
+系统采用多模型备份策略，按优先级依次尝试：
+
+### 1. 特征回归模型 (Ridge Regression) - 首选
+**数据要求**: 至少80条历史记录
+
+**特征工程**:
+```python
+features = [
+    "ret1",     # 1日收益率
+    "ma5",      # 5日均线
+    "ma10",     # 10日均线  
+    "ema12",    # 12日指数移动平均
+    "ema26",    # 26日指数移动平均
+    "vol_z"     # 成交量标准化 (Z-score)
+]
+```
+
+**预测流程**:
+1. **数据预处理**: StandardScaler标准化特征
+2. **模型训练**: RidgeCV交叉验证选择最佳正则化参数
+3. **置信区间**: 预测值 ± 1.28 × 残差标准差 (80%置信区间)
+4. **滚动预测**: 逐日预测未来5个交易日价格
+
+**优势**: 考虑多维度技术指标，预测相对稳定
+
+### 2. SARIMAX 时间序列模型 - 备选
+**数据要求**: 至少60条历史记录
+
+**模型参数**:
+- **ARIMA阶数**: (1,1,1) - 1阶自回归，1阶差分，1阶移动平均
+- **季节性**: (0,0,0,0) - 不考虑季节性
+- **约束**: 不强制平稳性和可逆性
+
+**置信区间**: 模型内置的80%置信区间
+
+**优势**: 纯时间序列方法，适合趋势明显的股票
+
+### 3. 线性趋势模型 - 保底
+**数据要求**: 至少5条历史记录
+
+**计算方法**:
+```python
+recent_trend = (close[-1] - close[-5]) / 5  # 最近5日平均变化
+predicted_price = last_price + (i + 1) * recent_trend
+confidence_interval = predicted_price ± 5%  # 固定5%置信区间
+```
+
+**优势**: 简单可靠，任何情况下都能给出预测
+
+## 预测结果输出格式
+
+```json
+{
+    "symbol": "002594.SZ",
+    "method": "feature_regression",  // 使用的模型
+    "confidence": 0.8,               // 置信度
+    "predictions": [
+        {
+            "day": 1,
+            "predicted_price": 105.63,
+            "lower_bound": 103.60,
+            "upper_bound": 107.65
+        },
+        // ... 未来5天预测
+    ]
+}
+```
+
+## 📰 新闻知识库功能（NEW）
+
+### 系统架构
+```
+SearXNG + Redis + MongoDB + PostgreSQL
+    ↓
+  新闻搜索 → 内容解析 → 情感分析 → 股票关联
+    ↓
+  自动收集 → 数据存储 → API接口 → 前端展示
+```
+
+### 部署新闻功能
+
+#### 1. 启动SearXNG服务
+```bash
+cd searxng
+docker-compose up -d
+```
+
+#### 2. 配置环境变量
+```bash
+# 在 .env 文件中添加
+SEARXNG_URL=http://localhost:10000
+MONGO_USER=admin
+MONGO_PASSWORD=password123
+NEWS_COLLECTION_ENABLED=true
+```
+
+#### 3. 新闻API接口
+
+**搜索新闻**
+```http
+POST /api/news/search
+{
+  "query": "比亚迪 新能源",
+  "category": "news",
+  "time_range": "week"
+}
+```
+
+**获取股票新闻**
+```http
+GET /api/news/stock/002594.SZ?limit=20
+```
+
+**情感分析**
+```http
+GET /api/news/sentiment/002594.SZ?days=7
+```
+
+#### 4. 访问新闻界面
+- 在系统中点击"财经新闻"选项卡
+- 支持搜索、过滤和情感分析
+- 自动关联当前选中的股票
+
+### 新闻功能特性
+- 🔍 **多源搜索**: 百度、谷歌、必应新闻聚合
+- 🤖 **智能解析**: 自动提取标题、内容、发布时间
+- 💭 **情感分析**: 正面/负面/中性情感评分
+- 📊 **股票关联**: 自动识别新闻中的股票代码
+- ⏰ **定时收集**: 每4小时自动收集最新新闻
+- 🔄 **去重处理**: 基于URL和内容的智能去重
+
+## 风险提示与免责声明
+
+### ⚠️ 重要提醒
+1. **仅供研究学习**: 所有预测结果仅用于技术研究和教学目的
+2. **不构成投资建议**: 任何预测都不应作为实际投资决策的唯一依据
+3. **市场风险**: 股市有风险，投资需谨慎，过往表现不代表未来结果
+4. **模型局限性**: 技术分析无法预测突发事件对股价的影响
+
+### 算法局限性
+- **短期预测**: 仅适用于1-5天的短期预测
+- **技术面分析**: 主要基于技术指标，未考虑基本面因素
+- **市场环境**: 在极端市场条件下预测准确性可能下降
+
+### 使用建议
+- 结合其他分析方法使用
+- 关注置信区间范围
+- 定期回测验证预测效果
+- 建立合理的风险管理机制
+
+---
+
+# 联系与反馈
+
+如有问题或建议，请在项目 Issue 区留言。
+
+---
+
+# 版本历史与贡献者
+
+（如需详细版本历史和贡献者列表，请参考原项目 GitHub 页面）
+
+---
+
+# END

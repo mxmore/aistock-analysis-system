@@ -49,22 +49,45 @@ class TestRunner:
             print(f"❌ {test_name} 执行异常: {e}")
             return False
     
-    def run_all_tests(self, api_url=None):
+    def run_all_tests(self, api_url=None, test_type=None):
         """运行所有测试"""
         print("🚀 股票系统测试套件")
         print(f"⏰ 开始时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print("=" * 60)
         
         # 定义测试列表
-        tests = [
-            ("tests/data/test_data_integrity.py", "数据完整性测试"),
+        unit_tests = [
+            ("tests/unit/test_stock_info.py", "股票信息单元测试"),
+        ]
+        
+        integration_tests = [
+            ("tests/integration/test_services.py", "后端服务连接测试"),
+            ("tests/integration/test_searxng.py", "SearXNG集成测试"),
+            ("tests/integration/test_news_api.py", "新闻API集成测试"),
             ("tests/integration/test_pipeline.py", "数据管道测试"),
         ]
         
-        # 如果提供了API URL，添加API测试
-        if api_url:
-            os.environ['API_URL'] = api_url
-            tests.append(("tests/integration/test_api.py", "API集成测试"))
+        data_tests = [
+            ("tests/data/test_data_integrity.py", "数据完整性测试"),
+        ]
+        
+        # 根据测试类型选择要运行的测试
+        if test_type == "unit":
+            tests = unit_tests
+        elif test_type == "integration":
+            tests = integration_tests
+            # 如果提供了API URL，添加API测试（仅集成测试类型）
+            if api_url:
+                os.environ['API_URL'] = api_url
+                tests.append(("tests/integration/test_api.py", "API集成测试"))
+        elif test_type == "data":
+            tests = data_tests
+        else:
+            tests = unit_tests + integration_tests + data_tests
+            # 如果提供了API URL，添加API测试（全部测试类型）
+            if api_url:
+                os.environ['API_URL'] = api_url
+                tests.append(("tests/integration/test_api.py", "API集成测试"))
         
         results = []
         
@@ -119,6 +142,8 @@ def main():
                        help='API服务器URL，用于API测试 (例如: http://localhost:8080)')
     parser.add_argument('--data-only', action='store_true',
                        help='只运行数据相关测试，跳过API测试')
+    parser.add_argument('--type', choices=['unit', 'integration', 'data'],
+                       help='指定测试类型: unit(单元测试), integration(集成测试), data(数据测试)')
     
     args = parser.parse_args()
     
@@ -126,10 +151,15 @@ def main():
     
     try:
         if args.data_only:
-            success = runner.run_all_tests(api_url=None)
+            success = runner.run_all_tests(api_url=None, test_type='data')
+        elif args.type:
+            # 如果指定了测试类型，则不设置默认API URL
+            api_url = args.api_url
+            success = runner.run_all_tests(api_url=api_url, test_type=args.type)
         else:
+            # 只有在运行全部测试时才设置默认API URL
             api_url = args.api_url or "http://localhost:8080"
-            success = runner.run_all_tests(api_url=api_url)
+            success = runner.run_all_tests(api_url=api_url, test_type=args.type)
         
         sys.exit(0 if success else 1)
         

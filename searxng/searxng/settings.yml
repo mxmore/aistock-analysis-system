@@ -1,0 +1,113 @@
+# SearXNG configuration for AI Stock News Search
+# This configuration focuses on financial news sources
+
+use_default_settings: true
+
+general:
+  debug: false
+  instance_name: "AI Stock News Search"
+  contact_url: false
+  donation_url: false
+  enable_metrics: false
+
+search:
+  safe_search: 0
+  autocomplete: ""
+  default_lang: "zh-CN"
+  ban_time_on_fail: 5
+  max_ban_time_on_fail: 120
+  suspended_times:
+    SearxEngineAccessDenied: 86400
+    SearxEngineCaptcha: 86400
+    SearxEngineRateLimit: 600
+    SearxEngineTooManyRequests: 3600
+
+server:
+  port: 8080
+  bind_address: "0.0.0.0"
+  secret_key: "aistock-news-search-key-2025"
+  base_url: false
+  image_proxy: false
+  http_protocol_version: "1.0"
+  method: "POST"
+
+ui:
+  static_use_hash: false
+  default_locale: "zh-CN"
+  query_in_title: false
+  infinite_scroll: false
+  center_alignment: false
+  cache_url: "https://web.archive.org/web/"
+  default_theme: simple
+  simple_style: auto
+  search_on_category_select: true
+  hotkeys: default
+
+# Enabled engines for financial news
+engines:
+  # General news sources
+  - name: bing news
+    engine: bing_news
+    shortcut: bn
+    categories: news
+    disabled: false
+
+  - name: google news
+    engine: google_news
+    shortcut: gn
+    categories: news
+    disabled: false
+
+  # Financial specific sources
+  - name: yahoo news
+    engine: yahoo_news
+    shortcut: yn
+    categories: news
+    disabled: false
+
+  # Chinese financial news
+  - name: baidu news
+    engine: baidu_news
+    shortcut: bdn
+    categories: news
+    disabled: false
+
+  # Social media for real-time updates
+  - name: reddit
+    engine: reddit
+    shortcut: re
+    categories: social media
+    disabled: false
+
+  # Academic and research
+  - name: arxiv
+    engine: arxiv
+    shortcut: arx
+    categories: science
+    disabled: false
+
+# Category configuration
+categories_as_tabs:
+  news:
+    name: "财经新闻"
+  social media:
+    name: "社交媒体"
+  science:
+    name: "研究报告"
+
+# Localization settings
+locales:
+  zh-CN: "简体中文"
+  en: "English"
+
+# Redis configuration for caching
+redis:
+  url: "redis://redis:6379/0"
+
+# Outgoing request settings
+outgoing:
+  request_timeout: 20.0
+  max_request_timeout: 60.0
+  pool_connections: 100
+  pool_maxsize: 20
+  enable_http2: true

@@ -1,5 +1,4 @@
 
-from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -7,7 +6,6 @@ from sqlalchemy import select, text, and_
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 from typing import List, Optional
-import asyncio
 import json
 import os
 import random
@@ -30,32 +28,7 @@ from .scheduler import run_daily_pipeline
 # 创建任务管理器实例
 task_manager = TaskManager()
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # 启动时初始化数据库
-    print("🚀 Starting backend server...")
-    init_database()
-    
-    # 启动后台任务处理器
-    task = asyncio.create_task(background_task_processor())
-    
-    yield
-    
-    # 关闭时停止任务管理器
-    print("🔄 Stopping backend server...")
-    task_manager.stop()
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
-
-async def background_task_processor():
-    """后台任务处理器"""
-    print("📋 Background task processor started")
-    await task_manager.process_tasks()
-
-app = FastAPI(title="AI Stock API", version="1.1", lifespan=lifespan)
+app = FastAPI(title="AI Stock API", version="1.1")
 
 # CORS middleware
 app.add_middleware(
@@ -73,64 +46,6 @@ def get_db():
         yield db
     finally:
         db.close()
-
-from contextlib import asynccontextmanager
-from fastapi import FastAPI, Depends
-from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.orm import Session
-from typing import List, Optional
-import asyncio
-
-from .db import SessionLocal, init_database
-from .data_source import get_stock_info, search_stocks, get_realtime_stock
-from .models import Stock, Report, Task
-from .forecast import predict_stock_price
-from .report import generate_report_data
-from .task_manager import TaskManager
-
-# 创建任务管理器实例
-task_manager = TaskManager()
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # 启动时初始化数据库
-    print("🚀 Starting backend server...")
-    init_database()
-    
-    # 启动后台任务处理器
-    task = asyncio.create_task(background_task_processor())
-    
-    yield
-    
-    # 关闭时停止任务管理器
-    print("🔄 Stopping backend server...")
-    task_manager.stop()
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
-
-async def background_task_processor():
-    """后台任务处理器"""
-    print("📋 Background task processor started")
-    await task_manager.process_tasks()
-
-app = FastAPI(title="AI Stock API", version="1.1", lifespan=lifespan)
-
-app = FastAPI(
-    title="AIStock A-Share Assistant", 
-    version="1.1",
-    lifespan=lifespan
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 class WatchItem(BaseModel):
     symbol: str
@@ -833,6 +748,489 @@ def list_tasks_api(status: Optional[str] = None, symbol: Optional[str] = None, d
         ]
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
+# ================ NEWS API ENDPOINTS ================
+
+from .news_service import NewsSearchService, NewsProcessor, NewsScheduler
+from .models import NewsArticle, NewsSource, SearchLog, NewsCategory, SentimentType
+
+# Initialize news services
+news_search_service = NewsSearchService()
+news_processor = NewsProcessor()
+news_scheduler = NewsScheduler()
+
+class NewsSearchRequest(BaseModel):
+    query: str
+    category: Optional[str] = "news"
+    time_range: Optional[str] = "week"
+    max_results: Optional[int] = 20
+
+class NewsResponse(BaseModel):
+    articles: List[dict]
+    total_count: int
+    query: str
+    processing_time: float
+
+@app.post("/api/news/search")
+async def search_news(request: NewsSearchRequest):
+    """
+    Search news using SearXNG
+    """
+    try:
+        start_time = time.time()
+        
+        results = await news_search_service.search_news(
+            query=request.query,
+            category=request.category,
+            time_range=request.time_range,
+            max_results=request.max_results
+        )
+        
+        processing_time = time.time() - start_time
+        
+        return NewsResponse(
+            articles=results,
+            total_count=len(results),
+            query=request.query,
+            processing_time=processing_time
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"News search failed: {str(e)}")
+
+@app.get("/api/news/stock/{symbol}")
+async def get_stock_news(symbol: str, limit: int = Query(20, ge=1, le=100)):
+    """
+    Get news for specific stock symbol
+    """
+    try:
+        print(f"🔍 API called for stock: {symbol}")
+        
+        # Get stock info first
+        stock_info = get_stock_info(symbol)
+        if not stock_info:
+            print(f"❌ Stock not found: {symbol}")
+            raise HTTPException(status_code=404, detail="Stock not found")
+        
+        print(f"📊 Stock info: {stock_info.get('name')}")
+        
+        # Initialize services
+        news_search_service = NewsSearchService()
+        news_processor = NewsProcessor()
+        
+        # Search news for this stock
+        print(f"🔎 Searching news...")
+        results = await news_search_service.search_stock_news(
+            symbol=symbol,
+            company_name=stock_info.get('name')
+        )
+        
+        print(f"🔎 Found {len(results)} search results")
+        
+        # Process and save articles
+        print(f"📝 Processing articles...")
+        articles = await news_processor.process_search_results(results, symbol)
+        
+        print(f"📝 Processed {len(articles)} articles")
+        
+        # Format response articles list
+        response_articles = []
+        
+        # Save to database and build response
+        session = SessionLocal()
+        try:
+            for i, article in enumerate(articles[:limit]):
+                try:
+                    print(f"💾 Processing article {i+1}: {article.title[:50]}...")
+                    
+                    # Check if article exists
+                    existing = session.execute(
+                        select(NewsArticle).where(NewsArticle.url == article.url)
+                    ).scalar_one_or_none()
+                    
+                    current_article = None
+                    if not existing:
+                        print(f"  ✅ New article, saving...")
+                        session.add(article)
+                        session.commit()
+                        session.refresh(article)
+                        current_article = article
+                    else:
+                        print(f"  ♻️ Article exists, using existing...")
+                        current_article = existing
+                    
+                    # Build article response data
+                    source_name = "Unknown"
+                    if current_article.source_id:
+                        if hasattr(current_article, 'source') and current_article.source:
+                            source_name = current_article.source.name
+                        else:
+                            # Load source if not loaded
+                            session.refresh(current_article)
+                            if hasattr(current_article, 'source') and current_article.source:
+                                source_name = current_article.source.name
+                    
+                    article_data = {
+                        "id": current_article.id,
+                        "title": current_article.title,
+                        "url": current_article.url,
+                        "summary": current_article.summary or "",
+                        "published_at": current_article.published_at.isoformat() if current_article.published_at else None,
+                        "source": source_name,
+                        "sentiment_type": current_article.sentiment_type,
+                        "sentiment_score": current_article.sentiment_score,
+                        "relevance_score": current_article.relevance_score,
+                        "related_stocks": current_article.related_stocks or []
+                    }
+                    
+                    response_articles.append(article_data)
+                    print(f"  📄 Added to response")
+                    
+                except Exception as e:
+                    print(f"❌ Error processing article: {e}")
+                    session.rollback()
+                    continue
+                    
+        finally:
+            session.close()
+        
+        print(f"✅ Completed! Returning {len(response_articles)} articles")
+        
+        # Return response
+        return {
+            "symbol": symbol,
+            "company_name": stock_info.get('name'),
+            "articles": response_articles,
+            "total_count": len(response_articles)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ API Error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error fetching stock news: {str(e)}")
+
+@app.get("/api/news/articles")
+async def get_news_articles(
+    db: Session = Depends(get_db),
+    category: Optional[str] = Query(None),
+    sentiment: Optional[str] = Query(None),
+    symbol: Optional[str] = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0)
+):
+    """
+    Get news articles with filtering
+    """
+    try:
+        query = select(NewsArticle).join(NewsSource)
+        
+        # Apply filters
+        if category:
+            query = query.where(NewsArticle.category == category)
+        
+        if sentiment:
+            query = query.where(NewsArticle.sentiment_type == sentiment)
+        
+        if symbol:
+            query = query.where(NewsArticle.related_stocks.contains([symbol]))
+        
+        # Order by published date, most recent first
+        query = query.order_by(NewsArticle.published_at.desc().nullslast())
+        
+        # Apply pagination
+        query = query.offset(offset).limit(limit)
+        
+        articles = db.execute(query).scalars().all()
+        
+        return {
+            "articles": [
+                {
+                    "id": article.id,
+                    "title": article.title,
+                    "url": article.url,
+                    "summary": article.summary,
+                    "published_at": article.published_at.isoformat() if article.published_at else None,
+                    "source": article.source.name,
+                    "category": article.category,
+                    "sentiment_type": article.sentiment_type,
+                    "sentiment_score": article.sentiment_score,
+                    "relevance_score": article.relevance_score,
+                    "related_stocks": article.related_stocks,
+                    "keywords": article.keywords
+                }
+                for article in articles
+            ],
+            "limit": limit,
+            "offset": offset,
+            "total_count": len(articles)
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching articles: {str(e)}")
+
+@app.get("/api/news/sources")
+async def get_news_sources(db: Session = Depends(get_db)):
+    """
+    Get all news sources
+    """
+    try:
+        sources = db.execute(select(NewsSource)).scalars().all()
+        
+        return {
+            "sources": [
+                {
+                    "id": source.id,
+                    "name": source.name,
+                    "domain": source.domain,
+                    "category": source.category,
+                    "reliability_score": source.reliability_score,
+                    "language": source.language,
+                    "enabled": source.enabled
+                }
+                for source in sources
+            ]
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching sources: {str(e)}")
+
+@app.post("/api/news/collect/{symbol}")
+async def collect_news_for_stock(symbol: str, db: Session = Depends(get_db)):
+    """
+    Manually trigger news collection for a specific stock
+    """
+    try:
+        # Get stock info
+        stock_info = get_stock_info(symbol)
+        if not stock_info:
+            raise HTTPException(status_code=404, detail="Stock not found")
+        
+        # Add news collection task
+        task = Task(
+            task_type=TaskType.FETCH_NEWS.value,
+            symbol=symbol,
+            status=TaskStatus.PENDING.value,
+            priority=3,
+            task_metadata=json.dumps({
+                "company_name": stock_info.get('name'),
+                "manual_trigger": True
+            })
+        )
+        db.add(task)
+        db.commit()
+        db.refresh(task)
+        task_id = task.id
+        
+        return {
+            "message": f"News collection task created for {symbol}",
+            "symbol": symbol,
+            "company_name": stock_info.get('name'),
+            "task_id": task_id
+        }
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error creating news collection task: {str(e)}")
+
+@app.post("/api/news/collect/intelligent")
+async def run_intelligent_news_collection():
+    """
+    Manually trigger intelligent news collection based on watchlist strategies
+    """
+    try:
+        from .scheduler import run_manual_intelligent_collection
+        
+        result = await run_manual_intelligent_collection()
+        
+        return {
+            "message": "Intelligent news collection completed",
+            "status": result.get("status"),
+            "strategies_executed": result.get("strategies_executed", 0),
+            "strategies_skipped": result.get("strategies_skipped", 0),
+            "strategies_failed": result.get("strategies_failed", 0),
+            "total_articles": result.get("total_articles", 0),
+            "strategy_results": result.get("strategy_results", [])
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error running intelligent news collection: {str(e)}")
+
+@app.get("/api/news/strategies/test")
+async def test_strategies():
+    """
+    Test endpoint for strategies generation
+    """
+    try:
+        from .news_strategy import IntelligentNewsCollector
+        
+        collector = IntelligentNewsCollector()
+        strategies = await collector.generate_strategies()
+        
+        return {
+            "message": "Test successful",
+            "strategies_count": len(strategies),
+            "strategies": [s.name for s in strategies]
+        }
+        
+    except Exception as e:
+        import traceback
+        return {
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
+
+@app.get("/api/news/strategies")
+async def get_news_strategies():
+    """
+    Get available news collection strategies
+    """
+    try:
+        from .news_strategy import IntelligentNewsCollector
+        
+        collector = IntelligentNewsCollector()
+        strategies = await collector.generate_strategies()
+        
+        return {
+            "strategies": [
+                {
+                    "name": strategy.name,
+                    "keywords": strategy.keywords,
+                    "frequency_hours": strategy.search_frequency,
+                    "priority": strategy.priority,
+                    "category": strategy.category,
+                    "search_params": strategy.search_params
+                }
+                for strategy in strategies
+            ],
+            "total_strategies": len(strategies)
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching strategies: {str(e)}")
+
+@app.post("/api/news/strategies/execute/{strategy_name}")
+async def execute_news_strategy(strategy_name: str):
+    """
+    Execute a specific news strategy by name
+    """
+    try:
+        from .news_strategy import IntelligentNewsCollector
+        
+        collector = IntelligentNewsCollector()
+        strategies = await collector.generate_strategies()
+        
+        # Find the strategy
+        target_strategy = None
+        for strategy in strategies:
+            if strategy.name == strategy_name:
+                target_strategy = strategy
+                break
+        
+        if not target_strategy:
+            raise HTTPException(status_code=404, detail=f"Strategy '{strategy_name}' not found")
+        
+        result = await collector.execute_strategy(target_strategy)
+        
+        return {
+            "message": f"Strategy '{strategy_name}' executed",
+            "result": result
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error executing strategy: {str(e)}")
+
+@app.get("/api/news/sentiment/{symbol}")
+async def get_stock_sentiment(symbol: str, db: Session = Depends(get_db), days: int = Query(7, ge=1, le=30)):
+    """
+    Get sentiment analysis for a stock over time
+    """
+    try:
+        from datetime import datetime, timedelta
+        
+        since_date = datetime.utcnow() - timedelta(days=days)
+        
+        query = select(NewsArticle).where(
+            and_(
+                NewsArticle.related_stocks.contains([symbol]),
+                NewsArticle.published_at >= since_date,
+                NewsArticle.sentiment_score.isnot(None)
+            )
+        ).order_by(NewsArticle.published_at.desc())
+        
+        articles = db.execute(query).scalars().all()
+        
+        if not articles:
+            return {
+                "symbol": symbol,
+                "period_days": days,
+                "sentiment_summary": {
+                    "average_score": 0,
+                    "positive_count": 0,
+                    "negative_count": 0,
+                    "neutral_count": 0,
+                    "total_articles": 0
+                },
+                "daily_sentiment": []
+            }
+        
+        # Calculate sentiment metrics
+        positive_count = sum(1 for a in articles if a.sentiment_type == SentimentType.POSITIVE.value)
+        negative_count = sum(1 for a in articles if a.sentiment_type == SentimentType.NEGATIVE.value)
+        neutral_count = sum(1 for a in articles if a.sentiment_type == SentimentType.NEUTRAL.value)
+        
+        avg_score = sum(a.sentiment_score for a in articles if a.sentiment_score) / len(articles)
+        
+        # Group by day
+        daily_sentiment = {}
+        for article in articles:
+            if article.published_at:
+                day = article.published_at.date().isoformat()
+                if day not in daily_sentiment:
+                    daily_sentiment[day] = []
+                daily_sentiment[day].append(article.sentiment_score)
+        
+        # Calculate daily averages
+        daily_data = []
+        for day, scores in daily_sentiment.items():
+            avg_day_score = sum(score for score in scores if score is not None) / len(scores)
+            daily_data.append({
+                "date": day,
+                "average_sentiment": avg_day_score,
+                "article_count": len(scores)
+            })
+        
+        daily_data.sort(key=lambda x: x["date"])
+        
+        return {
+            "symbol": symbol,
+            "period_days": days,
+            "sentiment_summary": {
+                "average_score": round(avg_score, 3),
+                "positive_count": positive_count,
+                "negative_count": negative_count,
+                "neutral_count": neutral_count,
+                "total_articles": len(articles)
+            },
+            "daily_sentiment": daily_data,
+            "recent_articles": [
+                {
+                    "title": article.title,
+                    "sentiment_type": article.sentiment_type,
+                    "sentiment_score": article.sentiment_score,
+                    "published_at": article.published_at.isoformat() if article.published_at else None,
+                    "url": article.url
+                }
+                for article in articles[:10]
+            ]
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error analyzing sentiment: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn

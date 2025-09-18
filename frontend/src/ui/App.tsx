@@ -2,8 +2,9 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react'
 import { LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer, Area, ComposedChart, Legend } from 'recharts'
 import Dashboard from './Dashboard'
+import ModernNewsComponent from './ModernNewsComponent'
 
-const API_BASE = (window as any).API_BASE || import.meta.env.VITE_API_BASE || 'http://localhost:8080'
+const API_BASE = (window as any).API_BASE || 'http://localhost:8083'
 
 async function jfetch<T>(path: string, init?: RequestInit): Promise<T> {
   const r = await fetch(`${API_BASE}${path}`, {
@@ -272,7 +273,7 @@ function Metric({ label, value }: { label: string; value: React.ReactNode }){
 }
 
 export default function App(){
-  const [currentPage, setCurrentPage] = useState<'main' | 'dashboard'>('main')
+  const [currentPage, setCurrentPage] = useState<'main' | 'dashboard' | 'news'>('main')
   const [watch, setWatch] = useState<WatchItem[]>([])
   const [current, setCurrent] = useState<string | undefined>(undefined)
   const [report, setReport] = useState<ReportResp | undefined>(undefined)
@@ -602,6 +603,20 @@ export default function App(){
             }}
           >
             任务监控
+          </button>
+          <button 
+            onClick={() => setCurrentPage('news')}
+            style={{
+              padding:'8px 16px', 
+              border:'none', 
+              borderRadius:6, 
+              background: currentPage === 'news' ? '#3b82f6' : 'transparent',
+              color: currentPage === 'news' ? '#fff' : '#6b7280',
+              cursor:'pointer',
+              fontWeight: currentPage === 'news' ? '500' : 'normal'
+            }}
+          >
+            财经新闻
           </button>
         </nav>
       </div>
@@ -971,9 +986,13 @@ export default function App(){
       onConfirm={dialog.onConfirm}
     />
     </div>
-    ) : (
+    ) : currentPage === 'dashboard' ? (
       <div style={{padding: '12px', border: '1px solid #e5e7eb', borderRadius: 12, background: '#fff'}}>
         <Dashboard />
+      </div>
+    ) : (
+      <div style={{background: 'transparent', padding: 0, border: 'none'}}>
+        <ModernNewsComponent />
       </div>
     )}
   </div>

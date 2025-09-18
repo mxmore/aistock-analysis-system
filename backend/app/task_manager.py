@@ -414,9 +414,83 @@ class TaskManager:
         """任务执行包装器"""
         try:
             if task_id in self.running_tasks:
-                await self.execute_report_task(task_id)
+                # 获取任务类型并执行相应的处理器
+                with SessionLocal() as session:
+                    task = session.execute(
+                        select(Task).where(Task.id == task_id)
+                    ).scalar_one_or_none()
+                    
+                    if task:
+                        if task.task_type == TaskType.GENERATE_REPORT.value:
+                            await self.execute_report_task(task_id)
+                        elif task.task_type == TaskType.FETCH_NEWS.value:
+                            await self.execute_news_task(task_id)
+                        else:
+                            logger.warning(f"Unknown task type: {task.task_type}")
         finally:
             self.running_tasks.discard(task_id)
+    
+    async def execute_news_task(self, task_id: int) -> bool:
+        """执行新闻收集任务"""
+        with SessionLocal() as session:
+            # 获取任务
+            task = session.execute(
+                select(Task).where(Task.id == task_id)
+            ).scalar_one_or_none()
+            
+            if not task or task.status != TaskStatus.PENDING:
+                logger.warning(f"News task {task_id} not found or not pending")
+                return False
+            
+            # 更新任务状态为运行中
+            task.status = TaskStatus.RUNNING
+            task.started_at = datetime.utcnow()
+            session.commit()
+            
+            try:
+                # 执行新闻收集
+                success = await self._collect_news_for_task(task, session)
+                
+                if success:
+                    task.status = TaskStatus.COMPLETED
+                    task.completed_at = datetime.utcnow()
+                    logger.info(f"News task {task_id} completed for {task.symbol}")
+                else:
+                    task.status = TaskStatus.FAILED
+                    task.error_message = "Failed to collect news"
+                    task.completed_at = datetime.utcnow()
+                    logger.error(f"News task {task_id} failed for {task.symbol}")
+                
+                session.commit()
+                return success
+                
+            except Exception as e:
+                task.status = TaskStatus.FAILED
+                task.error_message = str(e)
+                task.completed_at = datetime.utcnow()
+                session.commit()
+                logger.error(f"News task {task_id} failed with exception: {e}")
+                return False
+    
+    async def _collect_news_for_task(self, task: Task, session) -> bool:
+        """为任务收集新闻"""
+        try:
+            from .news_strategy import NewsStrategyScheduler
+            
+            if task.symbol == "ALL":
+                # 执行智能新闻收集
+                strategy_scheduler = NewsStrategyScheduler()
+                result = await strategy_scheduler.run_intelligent_collection()
+                return result.get("status") == "completed"
+            else:
+                # 为特定股票收集新闻
+                from .scheduler import run_manual_news_collection
+                await run_manual_news_collection(task.symbol)
+                return True
+                
+        except Exception as e:
+            logger.error(f"Error collecting news: {e}")
+            return False
 
 # 全局任务管理器实例
 task_manager = TaskManager()

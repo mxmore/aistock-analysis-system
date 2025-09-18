@@ -25,10 +25,11 @@ def fetch_daily_akshare(symbol: str, start_date: str = None) -> pd.DataFrame:
         "最低": "low", "成交量": "vol", "成交额": "amount", "涨跌幅": "pct_chg"
     })
     df["trade_date"] = pd.to_datetime(df["trade_date"]).dt.date
-    df["pct_chg"] = pd.to_numeric(df["pct_chg"], errors="coerce")
-    df["vol"] = pd.to_numeric(df["vol"], errors="coerce").astype("Int64")
+    # 修复：字段缺失时填充None
+    df["pct_chg"] = pd.to_numeric(df.get("pct_chg", pd.Series([None]*len(df))), errors="coerce")
+    df["vol"] = pd.to_numeric(df.get("vol", pd.Series([None]*len(df))), errors="coerce").astype("Int64")
     for col in ["open", "close", "high", "low", "amount"]:
-        df[col] = pd.to_numeric(df[col], errors="coerce")
+        df[col] = pd.to_numeric(df.get(col, pd.Series([None]*len(df))), errors="coerce")
     df["symbol"] = sym
     return df[["symbol", "trade_date", "open", "high", "low", "close", "pct_chg", "vol", "amount"]].dropna(subset=["close"])
 
@@ -45,11 +46,17 @@ def fetch_daily_tushare(symbol: str, start_date: str = None) -> pd.DataFrame:
         start_date = dt.strftime("%Y%m%d")
     df = pro.daily(ts_code=ts_code, start_date=start_date)
     df["trade_date"] = pd.to_datetime(df["trade_date"]).dt.date
-    df = df.rename(columns={"amount": "amount_x"})
-    df["amount"] = df["amount_x"] * 1000.0
+    # 修复：amount字段可能不存在
+    if "amount" in df.columns:
+        df = df.rename(columns={"amount": "amount_x"})
+        df["amount"] = df["amount_x"] * 1000.0
+    else:
+        df["amount"] = None
     out = df.rename(columns={"vol": "vol_x"})
-    out["vol"] = out["vol_x"].astype("Int64")
+    out["vol"] = pd.to_numeric(out.get("vol_x", pd.Series([None]*len(out))), errors="coerce").astype("Int64")
     out["symbol"] = sym
+    # 修复：pct_chg字段可能不存在
+    out["pct_chg"] = pd.to_numeric(out.get("pct_chg", pd.Series([None]*len(out))), errors="coerce")
     return out[["symbol", "trade_date", "open", "high", "low", "close", "pct_chg", "vol", "amount"]].dropna(subset=["close"])
 
 def fetch_daily(symbol: str, start_date: str | None = None) -> pd.DataFrame:

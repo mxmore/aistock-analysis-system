@@ -7,11 +7,16 @@
 ```
 tests/
 ├── run_tests.py              # 测试套件运行器
+├── unit/                     # 单元测试
+│   └── test_stock_info.py       # 股票信息获取单元测试
 ├── data/                     # 数据相关测试
 │   └── test_data_integrity.py   # 数据完整性测试
 └── integration/              # 集成测试
     ├── test_api.py              # API集成测试  
-    └── test_pipeline.py         # 数据管道测试
+    ├── test_pipeline.py         # 数据管道测试
+    ├── test_searxng.py          # SearXNG服务集成测试
+    ├── test_services.py         # 后端服务连接测试
+    └── test_news_api.py         # 新闻API集成测试
 ```
 
 ## 使用方法
@@ -22,26 +27,35 @@ tests/
 python tests/run_tests.py
 ```
 
-### 2. 运行数据测试（不需要API服务器）
+### 2. 运行单元测试
+```bash
+# 股票信息单元测试
+python tests/unit/test_stock_info.py
+
+# 手动调试模式
+python tests/unit/test_stock_info.py --manual
+```
+
+### 3. 运行集成测试
+```bash
+# SearXNG服务测试
+python tests/integration/test_searxng.py
+
+# 后端服务连接测试
+python tests/integration/test_services.py
+
+# 新闻API测试
+python tests/integration/test_news_api.py
+```
+
+### 4. 运行数据测试（不需要API服务器）
 ```bash
 python tests/run_tests.py --data-only
 ```
 
-### 3. 指定API服务器地址
+### 5. 指定API服务器地址
 ```bash
 python tests/run_tests.py --api-url http://localhost:8080
-```
-
-### 4. 运行单个测试
-```bash
-# 数据完整性测试
-python tests/data/test_data_integrity.py
-
-# API测试
-python tests/integration/test_api.py --url http://localhost:8080
-
-# 管道测试
-python tests/integration/test_pipeline.py
 ```
 
 ## 测试说明

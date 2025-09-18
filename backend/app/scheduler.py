@@ -8,11 +8,13 @@ from datetime import datetime, timedelta
 import pandas as pd
 
 from .db import SessionLocal, engine
-from .models import Watchlist, PriceDaily, Signal, Forecast
+from .models import Watchlist, PriceDaily, Signal, Forecast, Task, TaskType, TaskStatus
 from .data_source import fetch_daily
 from .signals import compute_signals
 from .forecast import predict_stock_price
 from .report import plain_summary, llm_summarize
+from .news_service import NewsScheduler
+from .news_strategy import NewsStrategyScheduler
 
 TZ = os.getenv("TZ", "Asia/Taipei")
 AHEAD = int(os.getenv("FORECAST_AHEAD_DAYS", "5"))
@@ -97,7 +99,73 @@ async def run_daily_pipeline() -> bool:
             summary = plain_summary(w.symbol, w.name, today_row, last_sig, preds_view)
             pretty = await llm_summarize(summary)
             print(pretty)
+            
+    # Run intelligent news collection
+    await run_intelligent_news_collection()
+    
     return True
+
+async def run_intelligent_news_collection():
+    """
+    Run intelligent news collection based on watchlist and strategies
+    """
+    try:
+        strategy_scheduler = NewsStrategyScheduler()
+        result = await strategy_scheduler.run_intelligent_collection()
+        
+        print(f"✓ Intelligent news collection completed:")
+        print(f"  - Strategies executed: {result.get('strategies_executed', 0)}")
+        print(f"  - Strategies skipped: {result.get('strategies_skipped', 0)}")
+        print(f"  - Total articles collected: {result.get('total_articles', 0)}")
+        
+        return result
+        
+    except Exception as e:
+        print(f"✗ Intelligent news collection failed: {e}")
+        raise
+
+async def run_news_collection():
+    """
+    Run news collection for all enabled stocks (Legacy method)
+    """
+    try:
+        news_scheduler = NewsScheduler()
+        await news_scheduler.run_scheduled_news_collection()
+        print("✓ Legacy news collection completed successfully")
+    except Exception as e:
+        print(f"✗ Legacy news collection failed: {e}")
+
+async def run_manual_intelligent_collection():
+    """
+    Manually trigger intelligent news collection
+    """
+    try:
+        return await run_intelligent_news_collection()
+    except Exception as e:
+        print(f"✗ Manual intelligent news collection failed: {e}")
+        raise
+
+async def run_manual_news_collection(symbol: str):
+    """
+    Manually run news collection for a specific stock
+    """
+    try:
+        with SessionLocal() as session:
+            # Check if stock exists in watchlist
+            stock = session.execute(
+                select(Watchlist).where(Watchlist.symbol == symbol)
+            ).scalar_one_or_none()
+            
+            if not stock:
+                raise ValueError(f"Stock {symbol} not found in watchlist")
+        
+        news_scheduler = NewsScheduler()
+        await news_scheduler._collect_news_for_stock(symbol, stock.name)
+        print(f"✓ News collection for {symbol} completed successfully")
+        
+    except Exception as e:
+        print(f"✗ News collection for {symbol} failed: {e}")
+        raise
 
 def attach_scheduler(app):
     try:
@@ -105,8 +173,8 @@ def attach_scheduler(app):
         hour = int(os.getenv("CRON_HOUR", "16"))
         minute = int(os.getenv("CRON_MINUTE", "10"))
         
-        # 添加作业时进行错误检查
-        job = sched.add_job(
+        # 添加主要数据处理作业
+        main_job = sched.add_job(
             run_daily_pipeline, 
             CronTrigger(hour=hour, minute=minute),
             id='daily_pipeline',
@@ -114,9 +182,30 @@ def attach_scheduler(app):
             max_instances=1
         )
         
+        # 添加智能新闻收集作业 - 每4小时运行一次
+        intelligent_news_job = sched.add_job(
+            run_intelligent_news_collection,
+            CronTrigger(hour='*/4'),  # 每4小时
+            id='intelligent_news_collection',
+            replace_existing=True,
+            max_instances=1
+        )
+        
+        # 添加传统新闻收集作业 - 每12小时运行一次 (作为备份)
+        legacy_news_job = sched.add_job(
+            run_news_collection,
+            CronTrigger(hour='*/12'),  # 每12小时
+            id='legacy_news_collection',
+            replace_existing=True,
+            max_instances=1
+        )
+        
         sched.start()
         app.state.scheduler = sched
-        print(f"✓ Scheduler started with daily job at {hour:02d}:{minute:02d} {TZ}")
+        print(f"✓ Scheduler started:")
+        print(f"  - Daily pipeline: {hour:02d}:{minute:02d} {TZ}")
+        print(f"  - Intelligent news collection: Every 4 hours")
+        print(f"  - Legacy news collection: Every 12 hours")
         return sched
         
     except Exception as e:
