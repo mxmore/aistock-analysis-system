@@ -5,6 +5,35 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>A 股 AI 助手</title>
+    
+    <!-- 早期错误过滤器 - 在任何其他脚本之前运行 -->
+    <script>
+      (function() {
+        // 立即设置全局错误处理器
+        window.addEventListener('unhandledrejection', function(event) {
+          if (event.reason && 
+              (event.reason.name === 'i' || 
+               event.reason.code === 403 || 
+               event.reason.message === 'permission error' ||
+               (event.reason.data && event.reason.data.code === 403))) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            // 静默处理，避免控制台噪音
+            return false;
+          }
+        }, true);
+        
+        // 拦截 console.error 的扩展错误
+        const origError = console.error;
+        console.error = function() {
+          const msg = Array.from(arguments).join(' ');
+          if (msg.includes('name: \'i\'') || msg.includes('code: 403') || msg.includes('permission error')) {
+            return; // 静默处理扩展错误
+          }
+          origError.apply(console, arguments);
+        };
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

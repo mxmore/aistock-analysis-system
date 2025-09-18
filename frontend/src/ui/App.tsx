@@ -3,11 +3,10 @@ import React, { useEffect, useMemo, useState, useRef } from 'react'
 import { LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer, Area, ComposedChart, Legend } from 'recharts'
 import Dashboard from './Dashboard'
 import ModernNewsComponent from './ModernNewsComponent'
-
-const API_BASE = (window as any).API_BASE || 'http://localhost:8083'
+import { API_BASE, buildApiUrl } from '../config/api'
 
 async function jfetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const r = await fetch(`${API_BASE}${path}`, {
+  const r = await fetch(buildApiUrl(path), {
     ...init,
     headers: { 'Content-Type': 'application/json', ...(init?.headers||{}) }
   })
@@ -370,7 +369,7 @@ export default function App(){
     ;(async()=>{
       try{
         setLoading(true); setError(undefined)
-        const r = await jfetch<ReportResp>(`/api/report/${current}/full`)
+        const r = await jfetch<ReportResp>(`/api/report/${current}/full?timeRange=${timeRange}`)
         setReport(r)
         
         // 新API已经包含了价格数据和预测数据，不需要单独获取prices
@@ -474,7 +473,7 @@ export default function App(){
       await jfetch('/run/daily', { method:'POST' })
       showToast('当日训练执行成功！数据已更新', 'success')
       if(current){ 
-        const r = await jfetch<ReportResp>(`/api/report/${current}/full`)
+        const r = await jfetch<ReportResp>(`/api/report/${current}/full?timeRange=${timeRange}`)
         setReport(r)
         
         // 更新价格数据
@@ -502,67 +501,42 @@ export default function App(){
   const merged = useMemo(()=>{
     const m:any[] = []
     
-    // 使用新API的数据格式
+    // 使用新API的数据格式 - 后端已经根据timeRange参数返回了正确的数据
     if (report?.price_data && report?.predictions) {
-      // 根据时间区间过滤历史价格数据
-      let filteredPrices = report.price_data || []
-      if (timeRange !== 'all' && filteredPrices.length > 0) {
-        if (timeRange === '5d') {
-          // 对于5日模式，显示最近5个工作日 + 预测数据
-          filteredPrices = filteredPrices.slice(-5)
-        } else {
-          const today = new Date()
-          let daysBack = 30
-          
-          switch(timeRange) {
-            case '1m': daysBack = 30; break
-            case '3m': daysBack = 90; break
-            case '6m': daysBack = 180; break
-            case '1y': daysBack = 365; break
-          }
-          
-          const cutoffDate = new Date(today.getTime() - daysBack * 24 * 60 * 60 * 1000)
-          filteredPrices = filteredPrices.filter(p => new Date(p.date) >= cutoffDate)
-        }
-      }
-      
-      // 添加历史价格数据
-      filteredPrices.forEach(p => m.push({
+      // 添加历史价格数据（后端已根据timeRange过滤）
+      report.price_data.forEach(p => m.push({
         date: p.date, 
         close: p.close,
         type: 'historical'
       }))
       
-      // 添加预测数据
-      report.predictions.forEach(pred => m.push({
-        date: pred.date,
-        yhat: pred.predicted_price,
-        yl: pred.lower_bound,
-        yu: pred.upper_bound,
-        type: 'prediction'
-      }))
+      // 添加连接点：从历史最后一个点到预测三个点建立连接
+      if (report.price_data.length > 0 && report.predictions.length > 0) {
+        const lastHistorical = report.price_data[report.price_data.length - 1]
+        const firstPrediction = report.predictions[0]
+        
+        // 添加历史数据最后一个点的扩展，包含预测数据的三个值
+        m.push({
+          date: lastHistorical.date,
+          close: lastHistorical.close,
+          yhat: lastHistorical.close, // 历史收盘价作为预测均值的起点
+          yl: lastHistorical.close,   // 历史收盘价作为下界的起点
+          yu: lastHistorical.close,   // 历史收盘价作为上界的起点
+          type: 'historical_extended'
+        })
+        
+        // 添加所有预测数据
+        report.predictions.forEach(pred => m.push({
+          date: pred.date,
+          yhat: pred.predicted_price,
+          yl: pred.lower_bound,
+          yu: pred.upper_bound,
+          type: 'prediction'
+        }))
+      }
     } else {
       // 保持向后兼容的旧格式
-      let filteredPrices = prices || []
-      if (timeRange !== 'all' && filteredPrices.length > 0) {
-        if (timeRange === '5d') {
-          filteredPrices = filteredPrices.slice(0, 5)
-        } else {
-          const today = new Date()
-          let daysBack = 30
-          
-          switch(timeRange) {
-            case '1m': daysBack = 30; break
-            case '3m': daysBack = 90; break
-            case '6m': daysBack = 180; break
-            case '1y': daysBack = 365; break
-          }
-          
-          const cutoffDate = new Date(today.getTime() - daysBack * 24 * 60 * 60 * 1000)
-          filteredPrices = filteredPrices.filter(p => new Date(p.trade_date) >= cutoffDate)
-        }
-      }
-      
+      const filteredPrices = prices || []
       filteredPrices.forEach(p=>m.push({date:p.trade_date, close:p.close}))
       report?.forecast?.forEach(f=>m.push({date:f.target_date, yhat:f.yhat, yl:f.yl, yu:f.yu}))
     }
@@ -868,10 +842,49 @@ export default function App(){
               <YAxis tick={{ fontSize: 12 }} domain={['auto','auto']} />
               <Tooltip />
               <Legend />
-              <Line type="monotone" dataKey="close" name="收盘" dot={false} strokeWidth={2} />
-              <Area type="monotone" dataKey="yhat" name="预测均值" dot={false} strokeWidth={1} fillOpacity={0.1} />
-              <Area type="monotone" dataKey="yu" name="预测上界" dot={false} strokeWidth={0.5} fillOpacity={0.05} />
-              <Area type="monotone" dataKey="yl" name="预测下界" dot={false} strokeWidth={0.5} fillOpacity={0.05} />
+              <Line 
+                type="monotone" 
+                dataKey="close" 
+                name="收盘" 
+                dot={false} 
+                strokeWidth={2} 
+                stroke="#2563eb"
+                connectNulls={false}
+              />
+              <Line 
+                type="monotone" 
+                dataKey="yhat" 
+                name="预测均值" 
+                dot={false} 
+                strokeWidth={2} 
+                stroke="#8884d8" 
+                strokeDasharray="5 5"
+                connectNulls={false}
+              />
+              <Area 
+                type="monotone" 
+                dataKey="yu" 
+                name="预测上界" 
+                dot={false} 
+                strokeWidth={1} 
+                fillOpacity={0.1} 
+                stroke="#8884d8"
+                fill="#8884d8"
+                strokeDasharray="3 3"
+                connectNulls={false}
+              />
+              <Area 
+                type="monotone" 
+                dataKey="yl" 
+                name="预测下界" 
+                dot={false} 
+                strokeWidth={1} 
+                fillOpacity={0.1} 
+                stroke="#8884d8"
+                fill="#8884d8"
+                strokeDasharray="3 3"
+                connectNulls={false}
+              />
             </ComposedChart>
           </ResponsiveContainer>
         }

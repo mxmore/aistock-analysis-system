@@ -5,7 +5,7 @@
 import sys
 import os
 import uvicorn
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 import json
 import traceback
@@ -249,10 +249,24 @@ def create_stable_api():
             raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
     
     @app.get("/api/report/{symbol}/full")
-    async def get_full_report(symbol: str):
+    async def get_full_report(symbol: str, timeRange: str = Query('5d', description="时间区间: 5d, 1m, 3m, 6m, 1y, all")):
         """获取完整的股票报告 - 前端兼容格式"""
         try:
-            logger.info(f"获取股票 {symbol} 的完整报告...")
+            logger.info(f"获取股票 {symbol} 的完整报告，时间区间: {timeRange}...")
+            
+            # 根据时间区间确定需要获取的数据天数
+            if timeRange == '5d':
+                limit_days = 5
+            elif timeRange == '1m':
+                limit_days = 30
+            elif timeRange == '3m':
+                limit_days = 90
+            elif timeRange == '6m':
+                limit_days = 180
+            elif timeRange == '1y':
+                limit_days = 365
+            else:  # 'all'
+                limit_days = 1000  # 获取所有可用数据
             
             with SessionLocal() as session:
                 # 获取最新报告
@@ -265,15 +279,39 @@ def create_stable_api():
                 if not report:
                     raise HTTPException(status_code=404, detail=f"No report found for {symbol}")
                 
-                # 获取过去5个工作日的价格数据
-                historical_prices = session.execute(
-                    text(
-                        "SELECT trade_date, open, high, low, close, vol, pct_chg "
-                        "FROM prices_daily WHERE symbol=:sym "
-                        "ORDER BY trade_date DESC LIMIT 5"
-                    ),
-                    {"sym": symbol.upper()}
-                ).mappings().all()
+                # 根据时间区间获取历史价格数据
+                if timeRange == 'all':
+                    # 获取所有可用数据
+                    historical_prices = session.execute(
+                        text(
+                            "SELECT trade_date, open, high, low, close, vol, pct_chg "
+                            "FROM prices_daily WHERE symbol=:sym "
+                            "ORDER BY trade_date DESC"
+                        ),
+                        {"sym": symbol.upper()}
+                    ).mappings().all()
+                else:
+                    # 根据时间区间过滤数据
+                    if timeRange == '5d':
+                        days_back = 7  # 多取几天以确保有5个工作日
+                    elif timeRange == '1m':
+                        days_back = 35  # 一个月加几天buffer
+                    elif timeRange == '3m':
+                        days_back = 95  # 三个月加几天buffer
+                    elif timeRange == '6m':
+                        days_back = 185  # 六个月加几天buffer
+                    elif timeRange == '1y':
+                        days_back = 370  # 一年加几天buffer
+                    
+                    historical_prices = session.execute(
+                        text(
+                            "SELECT trade_date, open, high, low, close, vol, pct_chg "
+                            "FROM prices_daily WHERE symbol=:sym "
+                            "AND trade_date >= CURRENT_DATE - INTERVAL '{} days' "
+                            "ORDER BY trade_date DESC".format(days_back)
+                        ),
+                        {"sym": symbol.upper()}
+                    ).mappings().all()
                 
                 # 解析JSON数据
                 latest_price_data = None

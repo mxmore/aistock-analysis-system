@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { API_BASE, API_ENDPOINTS, buildApiUrl } from '../config/api';
 
 interface Article {
   id: string;
@@ -23,8 +24,6 @@ interface Strategy {
   description: string;
 }
 
-const API_BASE = 'http://localhost:8080';
-
 export default function ModernNewsComponent() {
   const [articles, setArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState(false);
@@ -42,9 +41,9 @@ export default function ModernNewsComponent() {
   const loadNews = async () => {
     setLoading(true);
     try {
-      let url = `${API_BASE}/api/news/articles`;
+      let url = buildApiUrl(API_ENDPOINTS.NEWS.ARTICLES);
       if (selectedStock) {
-        url = `${API_BASE}/api/news/stock/${selectedStock}`;
+        url = buildApiUrl(API_ENDPOINTS.NEWS.STOCK_NEWS(selectedStock));
       }
 
       console.log('Loading news from:', url);
@@ -79,8 +78,8 @@ export default function ModernNewsComponent() {
   // Load watchlist
   const loadWatchlist = async () => {
     try {
-      console.log('Loading watchlist from:', `${API_BASE}/watchlist`);
-      const response = await fetch(`${API_BASE}/watchlist`);
+      console.log('Loading watchlist from:', buildApiUrl(API_ENDPOINTS.WATCHLIST));
+      const response = await fetch(buildApiUrl(API_ENDPOINTS.WATCHLIST));
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
@@ -104,7 +103,7 @@ export default function ModernNewsComponent() {
   // Load strategies
   const loadStrategies = async () => {
     try {
-      const response = await fetch(`${API_BASE}/api/news/strategies`);
+      const response = await fetch(buildApiUrl(API_ENDPOINTS.NEWS.STRATEGIES));
       const data = await response.json();
       setStrategies(data || []);
     } catch (error) {
@@ -127,7 +126,7 @@ export default function ModernNewsComponent() {
 
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/api/news/search`, {
+      const response = await fetch(buildApiUrl(API_ENDPOINTS.NEWS.SEARCH), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: searchQuery })
@@ -148,7 +147,7 @@ export default function ModernNewsComponent() {
     
     setIsCollecting(true);
     try {
-      const response = await fetch(`${API_BASE}/api/news/collect/${selectedStock}`, {
+      const response = await fetch(buildApiUrl(API_ENDPOINTS.NEWS.COLLECT(selectedStock)), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       });
@@ -170,7 +169,7 @@ export default function ModernNewsComponent() {
   const runIntelligentCollection = async () => {
     setIsIntelligentCollecting(true);
     try {
-      const response = await fetch(`${API_BASE}/api/news/collect/intelligent`, {
+      const response = await fetch(buildApiUrl(API_ENDPOINTS.NEWS.INTELLIGENT_COLLECT), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       });

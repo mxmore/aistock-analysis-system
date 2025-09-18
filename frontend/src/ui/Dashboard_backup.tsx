@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { API_BASE, API_ENDPOINTS, buildApiUrl } from '../config/api';
 
 // 简化图标组件 - 更小更统一
 const RefreshIcon = () => (
@@ -91,11 +92,9 @@ const Dashboard: React.FC = () => {
       setLoading(true);
       setError(null);
 
-      const API_BASE = (window as any).API_BASE || 'http://localhost:8080';
-
       const [reportsResponse, tasksResponse] = await Promise.all([
-        fetch(`${API_BASE}/api/dashboard/reports`),
-        fetch(`${API_BASE}/api/dashboard/tasks`)
+        fetch(buildApiUrl(API_ENDPOINTS.DASHBOARD.REPORTS)),
+        fetch(buildApiUrl('/api/dashboard/tasks'))
       ]);
 
       if (!reportsResponse.ok || !tasksResponse.ok) {
@@ -167,8 +166,7 @@ const Dashboard: React.FC = () => {
 
   const createReportTask = async (symbol: string) => {
     try {
-      const API_BASE = (window as any).API_BASE || 'http://localhost:8080';
-      const response = await fetch(`${API_BASE}/api/tasks/report/${symbol}`, {
+      const response = await fetch(buildApiUrl(API_ENDPOINTS.TASKS.REPORT(symbol)), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

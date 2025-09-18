@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { API_BASE, API_ENDPOINTS, buildApiUrl } from '../config/api';
 
 // 统一的图标组件 - 模块化设计
 const RefreshIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
@@ -45,6 +46,7 @@ interface DashboardData {
   pendingReports: number;
   failedReports: number;
   reports: Array<{
+    name?: string;
     stockCode: string;
     latestVersion: string;
     status: string;
@@ -75,8 +77,7 @@ const Dashboard: React.FC = () => {
       }
       setError(null);
 
-      const API_BASE = (window as any).API_BASE || 'http://localhost:8083';
-      const response = await fetch(`${API_BASE}/api/dashboard/reports`);
+      const response = await fetch(buildApiUrl(API_ENDPOINTS.DASHBOARD.REPORTS));
 
       if (!response.ok) {
         throw new Error(`API请求失败: ${response.statusText}`);
@@ -91,6 +92,7 @@ const Dashboard: React.FC = () => {
         pendingReports: data.summary?.pending_tasks || 0,
         failedReports: data.summary?.failed_tasks || 0,
         reports: data.stocks?.map((stock: any) => ({
+          name: stock.name,
           stockCode: stock.symbol,
           latestVersion: stock.latest_report?.version || '未生成',
           status: stock.current_task?.status || (stock.latest_report ? 'completed' : 'unknown'),
@@ -146,8 +148,7 @@ const Dashboard: React.FC = () => {
 
   const retryReport = async (stockCode: string) => {
     try {
-      const API_BASE = (window as any).API_BASE || 'http://localhost:8083';
-      const response = await fetch(`${API_BASE}/api/tasks/report/${stockCode}`, {
+      const response = await fetch(buildApiUrl(API_ENDPOINTS.TASKS.REPORT(stockCode)), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ priority: 1 })
@@ -687,18 +688,25 @@ const Dashboard: React.FC = () => {
                             color: '#111827' 
                           }}>
                             <div style={{ display: 'flex', alignItems: 'center' }}>
+                              
                               <div style={{ 
                                 backgroundColor: '#dbeafe', 
                                 borderRadius: '6px', 
                                 padding: '6px 8px', 
-                                marginRight: '12px',
+                                marginRight: '0px',
                                 fontSize: '12px',
                                 fontWeight: 'bold',
                                 color: '#1d4ed8'
                               }}>
-                                {report.stockCode.slice(-2)}
+                                {report.name ? (
+                                  <span style={{ marginRight: '8px' }}>{report.name}</span>
+                                ) : null}
+                                (
+                                {report.stockCode.slice(-2)}.
+                                {report.stockCode.slice(0, -3)}
+                                )
+
                               </div>
-                              {report.stockCode}
                             </div>
                           </td>
                           <td style={{ 

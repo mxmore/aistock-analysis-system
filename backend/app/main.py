@@ -383,10 +383,10 @@ async def check_missing_report_tasks():
     return {"created_tasks": created_tasks, "count": len(created_tasks)}
 
 @app.get("/api/report/{symbol}/full")
-async def get_full_report(symbol: str):
+async def get_full_report(symbol: str, timeRange: str = Query('5d', description="时间区间: 5d, 1m, 3m, 6m, 1y, all")):
     """
     获取完整的股票报告，包含历史价格走势和预测数据
-    默认显示过去5个工作日和未来5个工作日
+    支持不同时间区间：5d, 1m, 3m, 6m, 1y, all
     """
     with SessionLocal() as session:
         sym = symbol.upper()
@@ -399,15 +399,39 @@ async def get_full_report(symbol: str):
                 ).order_by(Report.created_at.desc())
             ).scalar_one_or_none()
             
-            # 获取过去10个工作日的价格数据（确保有5个工作日）
-            historical_prices = session.execute(
-                text(
-                    "SELECT trade_date, open, high, low, close, vol, pct_chg "
-                    "FROM prices_daily WHERE symbol=:sym "
-                    "ORDER BY trade_date DESC LIMIT 10"
-                ),
-                {"sym": sym}
-            ).mappings().all()
+            # 根据时间区间获取历史价格数据
+            if timeRange == 'all':
+                # 获取所有可用数据
+                historical_prices = session.execute(
+                    text(
+                        "SELECT trade_date, open, high, low, close, vol, pct_chg "
+                        "FROM prices_daily WHERE symbol=:sym "
+                        "ORDER BY trade_date DESC"
+                    ),
+                    {"sym": sym}
+                ).mappings().all()
+            else:
+                # 根据时间区间过滤数据
+                if timeRange == '5d':
+                    days_back = 7  # 多取几天以确保有5个工作日
+                elif timeRange == '1m':
+                    days_back = 35  # 一个月加几天buffer
+                elif timeRange == '3m':
+                    days_back = 95  # 三个月加几天buffer
+                elif timeRange == '6m':
+                    days_back = 185  # 六个月加几天buffer
+                elif timeRange == '1y':
+                    days_back = 370  # 一年加几天buffer
+                
+                historical_prices = session.execute(
+                    text(
+                        "SELECT trade_date, open, high, low, close, vol, pct_chg "
+                        "FROM prices_daily WHERE symbol=:sym "
+                        "AND trade_date >= CURRENT_DATE - INTERVAL '{} days' "
+                        "ORDER BY trade_date DESC".format(days_back)
+                    ),
+                    {"sym": sym}
+                ).mappings().all()
             
             if not historical_prices:
                 raise HTTPException(status_code=404, detail=f"No data found for {sym}")
@@ -423,6 +447,7 @@ async def get_full_report(symbol: str):
                     "close": float(price["close"]) if price["close"] else None,
                     "volume": int(price["vol"]) if price["vol"] else 0,
                     "pct_change": float(price["pct_chg"]) if price["pct_chg"] else 0,
+                    "pct_chg": float(price["pct_chg"]) if price["pct_chg"] else 0,  # 前端兼容
                     "type": "historical"
                 })
             
@@ -433,11 +458,38 @@ async def get_full_report(symbol: str):
             prediction_upper = []
             prediction_lower = []
             
-            if report and report.forecast_data:
+            if report and report.forecast_data and historical_prices:
                 try:
                     forecast_data = json.loads(report.forecast_data)
-                    if "predictions" in forecast_data:
+                    # forecast_data 是一个列表，直接处理
+                    if isinstance(forecast_data, list) and len(forecast_data) > 0:
                         from datetime import datetime, timedelta
+                        # 使用最新的历史价格日期作为基准（historical_prices是按日期降序排列的）
+                        last_date = historical_prices[0]["trade_date"]
+                        
+                        # 取前10个预测点，重新计算日期
+                        for i, pred in enumerate(forecast_data[:10]):
+                            # 重新计算预测日期：从最新历史日期的下一个交易日开始
+                            target_date = last_date + timedelta(days=i+1)
+                            while target_date.weekday() >= 5:  # 跳过周末
+                                target_date += timedelta(days=1)
+                            
+                            prediction_dates.append(target_date.isoformat())
+                            prediction_mean.append(pred["yhat"])
+                            prediction_upper.append(pred["yhat_upper"])
+                            prediction_lower.append(pred["yhat_lower"])
+                            
+                            predictions.append({
+                                "date": target_date.isoformat(),  # 使用重新计算的日期
+                                "predicted_price": pred["yhat"],
+                                "upper_bound": pred["yhat_upper"],
+                                "lower_bound": pred["yhat_lower"],
+                                "type": "prediction"
+                            })
+                    # 兼容旧格式（包含 "predictions" 键的格式）
+                    elif isinstance(forecast_data, dict) and "predictions" in forecast_data:
+                        from datetime import datetime, timedelta
+                        # 使用最新的历史价格日期作为基准（historical_prices是按日期降序排列的）
                         last_date = historical_prices[0]["trade_date"]
                         
                         for pred in forecast_data["predictions"]:
@@ -460,6 +512,7 @@ async def get_full_report(symbol: str):
                             })
                 except Exception as e:
                     print(f"Error parsing forecast data: {e}")
+                    # 即使预测数据解析失败，也要继续返回历史数据
             
             # 构建响应
             result = {
@@ -481,6 +534,9 @@ async def get_full_report(symbol: str):
                 
                 # 最新价格和信号
                 "latest_price": price_data[-1] if price_data else None,
+                
+                # 前端兼容字段
+                "latest": price_data[-1] if price_data else None,  # 向后兼容
             }
             
             # 添加技术指标信号

@@ -3,8 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "./card";
 import { Button } from "./button";
 import { Input } from "./input";
 import { Badge } from "./badge";
-
-const API_BASE = (window as any).API_BASE || 'http://localhost:8080';
+import { API_BASE, API_ENDPOINTS, buildApiUrl } from '../config/api';
 
 interface NewsArticle {
   id: number;
@@ -49,9 +48,9 @@ export default function NewsComponent({ symbol, companyName }: NewsComponentProp
   const loadNews = async () => {
     setLoading(true);
     try {
-      let url = `${API_BASE}/api/news/articles`;
+      let url = buildApiUrl(API_ENDPOINTS.NEWS.ARTICLES);
       if (selectedStock) {
-        url = `${API_BASE}/api/news/stock/${selectedStock}`;
+        url = buildApiUrl(API_ENDPOINTS.NEWS.STOCK_NEWS(selectedStock));
       }
 
       const response = await fetch(url);
@@ -85,7 +84,7 @@ export default function NewsComponent({ symbol, companyName }: NewsComponentProp
     
     setIsCollecting(true);
     try {
-      const response = await fetch(`${API_BASE}/api/news/collect/${selectedStock}`, {
+      const response = await fetch(buildApiUrl(API_ENDPOINTS.NEWS.COLLECT(selectedStock)), {
         method: 'POST'
       });
       
@@ -104,7 +103,7 @@ export default function NewsComponent({ symbol, companyName }: NewsComponentProp
   const runIntelligentCollection = async () => {
     setIsIntelligentCollecting(true);
     try {
-      const response = await fetch(`${API_BASE}/api/news/intelligent-collect`, {
+      const response = await fetch(buildApiUrl(API_ENDPOINTS.NEWS.INTELLIGENT_COLLECT), {
         method: 'POST'
       });
       
@@ -124,7 +123,7 @@ export default function NewsComponent({ symbol, companyName }: NewsComponentProp
   // Load available strategies
   const loadStrategies = async () => {
     try {
-      const response = await fetch(`${API_BASE}/api/news/strategies`);
+      const response = await fetch(buildApiUrl(API_ENDPOINTS.NEWS.STRATEGIES));
       const data = await response.json();
       setStrategies(data.strategies);
     } catch (error) {
@@ -135,8 +134,8 @@ export default function NewsComponent({ symbol, companyName }: NewsComponentProp
   // Load watchlist
   const loadWatchlist = async () => {
     try {
-      console.log('Loading watchlist from:', `${API_BASE}/watchlist`);
-      const response = await fetch(`${API_BASE}/watchlist`);
+      console.log('Loading watchlist from:', buildApiUrl(API_ENDPOINTS.WATCHLIST));
+      const response = await fetch(buildApiUrl(API_ENDPOINTS.WATCHLIST));
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
@@ -171,7 +170,7 @@ export default function NewsComponent({ symbol, companyName }: NewsComponentProp
     
     setLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/api/news/search`, {
+      const response = await fetch(buildApiUrl(API_ENDPOINTS.NEWS.SEARCH), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
